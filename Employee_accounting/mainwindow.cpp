@@ -4,6 +4,7 @@
 #include "registrationwindow.h"
 #include <QtDebug>
 
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui_main(new Ui::MainWindow)
@@ -28,13 +29,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     if(!connectionToDataBase())
         {
-            qDebug() << "Ошибка подключения базы данных";
+            qDebug() << "Database connection error";
         }
 
 
     QSqlQuery query;
 
-    queryDataBase = "CREATE TABLE userlist ( "
+    queryDB = "CREATE TABLE userlist ( "
                          "number INTEGER PRIMARY KEY NOT NULL,"
                          "name VARCHAR(20), "
                          "pass VARCHAR(12), "
@@ -43,40 +44,64 @@ MainWindow::MainWindow(QWidget *parent)
                          "width INTEGER, "
                          "length INTEGER );";
 
-    if(!query.exec(queryDataBase))
+    if(!query.exec(queryDB))
         {
-                qDebug() << "Невозможно сформировать таблицу" << query.lastError();
+            qDebug() << "unable to create a table at userlist" << query.lastError();
         }
 
     ui_main->setupUi(this);
-}
 
+    queryDBEmployee = new QSqlQuery(mainWindowDataBase);
+    QString queryDataBase;
+    queryDataBase = "CREATE TABLE employeeslist( "
+                         "number INTEGER PRIMARY KEY AUTOINCREMENT,"
+                         "name VARCHAR(20), "
+                         "lastname VARCHAR(20), "
+                         "patronymic VARCHAR(20),"
+                         "dateofbirth DATA );";
+
+
+    if (queryDBEmployee->exec(queryDataBase))
+    {
+        qDebug() << "table employeeslist is created";
+    }
+    else
+    {
+        qDebug() << "table employeeslist can't be created" << queryDBEmployee->lastError() << " : " << queryDBEmployee->lastQuery() ;
+    }
+
+    model = new QSqlTableModel(this, mainWindowDataBase);
+    model->setTable("employeeslist");
+    model->select();
+
+    ui_main->tableView_main->setModel(model);
+    // ui_main->tableView_main->setColumnHidden(0, true);
+
+}
 
 MainWindow::~MainWindow()
 {
     if(loginSuccesfull)
     {
-        QString str_t = "UPDATE userlist "
+        QString str_t = "UPDATE userlist "      // сохранение геометрии окна пользователя
                         "SET xpos = %2, ypos = %3, width = %4, length = %5 "
                         "WHERE name = '%1';";
-        queryDataBase = str_t .arg(mainUserName)
+        queryDB = str_t .arg(mainUserName)
                          .arg(this->x())
                          .arg(this->y())
                          .arg(this->width())
                          .arg(this->height());
         QSqlQuery query;
-        if(!query.exec(queryDataBase))
+        if(!query.exec(queryDB))
         {
             qDebug() << "Unable to insert data"  << query.lastError() << " : " << query.lastQuery() ;
         }
     }
-    mainWindowDataBase.removeDatabase("authorisation");
+    mainWindowDataBase.removeDatabase("mainWindowDataBase");
     qDebug() << "MainWindow Destroyed";
     delete ui_main;
     exit(0);
 }
-
-
 
 
 void MainWindow::authorizeUser()
@@ -97,12 +122,12 @@ void MainWindow::authorizeUser()
     int width = 0;
     int length = 0;
 
-    queryDataBase = str_t.arg(mainUserName);
+    queryDB = str_t.arg(mainUserName);
 
     QSqlQuery query;
     QSqlRecord rec;
 
-    if(!query.exec(queryDataBase))
+    if(!query.exec(queryDB))
     {
         qDebug() << "Unable to execute query - exiting" << query.lastError() << " : " << query.lastQuery();
     }
@@ -125,23 +150,13 @@ void MainWindow::authorizeUser()
         length = query.value(rec.indexOf("length")).toInt();
         uiAuthorization.close();
         uiRegistration.close();
+
+
+
+
+
+
         this->setGeometry(xPos,yPos,width, length);
-        this->setWindowTitle("Учет сотрудников");
-
-
-
-
-        QString str_t2 = " SELECT * "
-                         " FROM userlist ";
-        queryDataBase = str_t2;
-        QSqlQuery query2;
-        query2.exec(queryDataBase);
-        while (query2.next())
-        {
-
-             QString name = query2.value(2).toString();
-             qDebug() << name;
-        }
         this->show();
     }
 }
@@ -160,8 +175,8 @@ void MainWindow::registerUser()
             QSqlRecord rec;
             QString str_t = "SELECT COUNT(*) "
                             "FROM userlist;";
-            queryDataBase = str_t;
-            if(!query.exec(queryDataBase))
+            queryDB = str_t;
+            if(!query.exec(queryDB))
             {
                 qDebug() << "Unable to get number " << query.lastError() << " : " << query.lastQuery();
                 return;
@@ -180,15 +195,15 @@ void MainWindow::registerUser()
             userCounter++;
             str_t = "INSERT INTO userlist(number, name, pass, xpos, ypos, width, length)"
                     "VALUES(%1, '%2', '%3', %4, %5, %6, %7);";
-            queryDataBase = str_t .arg(userCounter)
+            queryDB = str_t .arg(userCounter)
                              .arg(mainUserName)
                              .arg(mainUserPassword)
                              .arg(0)
                              .arg(0)
-                             .arg(800)
-                             .arg(400);
+                             .arg(1200)
+                             .arg(800);
 
-            if(!query.exec(queryDataBase))
+            if(!query.exec(queryDB))
             {
                 qDebug() << "Unable to insert data"  << query.lastError() << " : " << query.lastQuery();
             }
@@ -212,10 +227,10 @@ void MainWindow::display()
 bool MainWindow::connectionToDataBase()
 {
     mainWindowDataBase = QSqlDatabase::addDatabase("QSQLITE");
-    mainWindowDataBase.setDatabaseName("authorisation");
+    mainWindowDataBase.setDatabaseName("D:/project/dataBaseEmployee.db");
     if(!mainWindowDataBase.open())
     {
-        qDebug() << "Cannot open database: " << mainWindowDataBase.lastError();
+        qDebug() << "Can't open database: " << mainWindowDataBase.lastError();
         return false;
     }
     return true;
@@ -224,11 +239,23 @@ bool MainWindow::connectionToDataBase()
 
 
 
+void MainWindow::on_pushButton_addEmployee_clicked()
+{
+   model->insertRow(model->rowCount());
+}
 
+void MainWindow::on_pushButton_deleteEmployee_clicked()
+{
+    model->removeRow(row);
+    model->select();
+}
 
+void MainWindow::on_pushButton_editEmployee_clicked()
+{
+model->select();
+}
 
-
-
-
-
-
+void MainWindow::on_tableView_main_clicked(const QModelIndex &index)
+{
+    row = index.row();
+}
